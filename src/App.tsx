@@ -48,7 +48,7 @@ function HomePage() {
 
 function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename="/ResumeMint">
       <AuthProvider>
         <CartProvider>
           <div className="bg-black text-white overflow-x-hidden">

@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { initFirebase, onAuthChange, signInWithGoogle, signInWithApple, signInWithMicrosoft, createUserEmail, signInEmail, signOut as firebaseSignOut, isConfigured } from '../firebase'
+import { otpService } from '../utils/otpService';
 
 interface User {
   id: string;
@@ -19,8 +20,10 @@ interface PaymentMethod {
 interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
-  login: (email: string, phone: string) => void;
-  verifyOTP: (otp: string) => void;
+  // OTP based authentication
+  requestOTP: (phone: string) => Promise<{ success: boolean; message: string; sessionId: string }>;
+  verifyOTP: (sessionId: string, otp: string) => Promise<{ success: boolean; message: string }>;
+  // Email/Password authentication
   signInWithGoogle: () => Promise<void>;
   signInWithApple: () => Promise<void>;
   signInWithMicrosoft: () => Promise<void>;
@@ -30,21 +33,24 @@ interface AuthContextType {
   updateProfile: (data: Partial<User>) => void;
   addPaymentMethod: (method: PaymentMethod) => void;
   removePaymentMethod: (id: string) => void;
-  otpSent: boolean;
-  setOtpSent: (sent: boolean) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(() => {
+    // Check both localStorage and temporary session storage
     const saved = localStorage.getItem('user');
-    return saved ? JSON.parse(saved) : null;
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        console.warn('Could not parse user from localStorage');
+        return null;
+      }
+    }
+    return null;
   });
-  const [otpSent, setOtpSent] = useState(false);
-  const [tempEmail, setTempEmail] = useState('');
-  const [tempPhone, setTempPhone] = useState('');
-  const [confirmationResult, setConfirmationResult] = useState<any | null>(null);
 
   useEffect(() => {
     initFirebase()
@@ -67,34 +73,62 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => unsub()
   }, [])
 
-  const login = (email: string, phone: string) => {
-    // Initiates phone OTP flow; actual sending happens via Firebase in the page using Recaptcha
-    setTempEmail(email)
-    setTempPhone(phone)
-    setOtpSent(true)
+  /**
+   * Request OTP for phone number
+   */
+  const requestOTP = async (phone: string): Promise<{ success: boolean; message: string; sessionId: string }> => {
+    try {
+      const result = await otpService.requestOTP(phone);
+      return {
+        success: result.success,
+        message: result.message,
+        sessionId: result.sessionId,
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        message: err.message || 'Failed to request OTP',
+        sessionId: '',
+      };
+    }
   }
 
-  const verifyOTP = async (otp: string) => {
-    if (!confirmationResult) {
-      alert('No OTP request in progress.');
-      return
-    }
+  /**
+   * Verify OTP and login user
+   */
+  const verifyOTP = async (sessionId: string, otp: string): Promise<{ success: boolean; message: string }> => {
     try {
-      const cred = await confirmationResult.confirm(otp)
-      const fbUser = cred.user
-      const newUser: User = {
-        id: fbUser.uid,
-        name: fbUser.displayName || tempEmail.split('@')[0],
-        email: fbUser.email || tempEmail,
-        phone: fbUser.phoneNumber || tempPhone,
-        paymentMethods: [],
+      const result = await otpService.verifyOTP(sessionId, otp);
+      
+      if (!result.success) {
+        return {
+          success: false,
+          message: result.message,
+        };
       }
-      setUser(newUser)
-      localStorage.setItem('user', JSON.stringify(newUser))
-      setOtpSent(false)
-      setConfirmationResult(null)
-    } catch (err) {
-      alert('Invalid OTP')
+
+      // Create or update user with phone number
+      const phoneNumber = result.phoneNumber || '';
+      const newUser: User = {
+        id: `phone_${phoneNumber}_${Date.now()}`,
+        name: `User_${phoneNumber.slice(-4)}`,
+        email: '',
+        phone: phoneNumber,
+        paymentMethods: [],
+      };
+
+      setUser(newUser);
+      localStorage.setItem('user', JSON.stringify(newUser));
+
+      return {
+        success: true,
+        message: 'Login successful',
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        message: err.message || 'Failed to verify OTP',
+      };
     }
   }
 
@@ -207,7 +241,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       value={{
         user,
         isAuthenticated: !!user,
-        login,
+        requestOTP,
         verifyOTP,
         signInWithGoogle: signInWithGoogleWrapper,
         signInWithApple: signInWithAppleWrapper,
@@ -218,8 +252,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         updateProfile,
         addPaymentMethod,
         removePaymentMethod,
-        otpSent,
-        setOtpSent,
       }}
     >
       {children}
