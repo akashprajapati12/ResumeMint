@@ -1,6 +1,6 @@
-# React + TypeScript + Vite
+# ResumeMint - Professional Resume Builder
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A professional resume builder application with SMS authentication, payment integration, and premium templates.
 
 Currently, two official plugins are available:
 
