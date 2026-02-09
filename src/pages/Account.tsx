@@ -9,6 +9,7 @@ export default function Account() {
   const navigate = useNavigate();
   const [editMode, setEditMode] = useState(false);
   const [name, setName] = useState(user?.name || '');
+  const [phone, setPhone] = useState(user?.phone || '');
 
   if (!user) {
     return (
@@ -31,7 +32,7 @@ export default function Account() {
   }
 
   const handleUpdateProfile = () => {
-    updateProfile({ name });
+    updateProfile({ name, phone });
     setEditMode(false);
   };
 
@@ -81,7 +82,17 @@ export default function Account() {
 
               <div>
                 <label className="text-gray-400 text-sm">Phone</label>
-                <p className="text-lg font-semibold mt-1">{user.phone}</p>
+                {editMode ? (
+                  <input
+                    type="tel"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:border-yellow-400 outline-none mt-1"
+                    placeholder="+919876543210"
+                  />
+                ) : (
+                  <p className="text-lg font-semibold mt-1">{user.phone || 'Not provided'}</p>
+                )}
               </div>
             </div>
 
@@ -97,6 +108,7 @@ export default function Account() {
                   onClick={() => {
                     setEditMode(false);
                     setName(user.name);
+                    setPhone(user.phone);
                   }}
                   className="bg-gray-800 text-white px-6 py-2 rounded-lg font-bold hover:bg-gray-700 transition"
                 >
